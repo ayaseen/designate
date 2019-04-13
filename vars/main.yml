@@ -1,0 +1,9 @@
+---
+# vars file for roles/designate
+osp_ctl_ip: 192.168.1.9
+bind_server: 192.168.1.6
+mysql_root_password: rhlab123
+designate_user_password: designate
+designate_db_user: designate
+designate_db: designate
+designate_osp_password: designate

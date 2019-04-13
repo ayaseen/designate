@@ -1,0 +1,118 @@
+---
+# tasks file for roles/designate
+
+- name: Install designate packages
+  yum:
+    name: ['bind', 'openstack-designate-*']
+    state: latest
+
+
+- name: Create Designate database
+  mysql_db:
+    name: "{{ designate_db }}"
+    state: present
+    collation: utf8_general_ci
+    encoding: utf8
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+
+- name: Create Designate DB user
+  mysql_user:
+    name: "{{ designate_db_user }}"
+    password: "{{ designate_user_password }}"
+    priv:  "{{ designate_db }}.*:ALL,GRANT"
+    append_privs: yes
+    login_user: root
+    host: "{{ item }}"
+    login_password: "{{ mysql_root_password }}"
+    state: present
+  with_items:
+    - '{{ ansible_fqdn }}'
+    - '127.0.0.1'
+    - '::1'
+    - 'localhost'
+
+- name: Add designate user in openstack
+  os_user:
+    cloud: openstack
+    state: present
+    name: designate
+    password: "{{ designate_osp_password }}"
+    update_password: on_create
+    domain: default
+  become: false
+  delegate_to: localhost
+
+- name: Add admin role to designate user
+  os_user_role:
+    cloud: openstack
+    user: designate
+    role: admin
+    project: services
+  become: false
+  delegate_to: localhost
+
+- name: Create openstack designate service
+  os_keystone_service:
+    cloud: openstack
+    state: present
+    name: designate
+    service_type: dns
+    description: OpenStack Designate DNS
+  become: false
+  delegate_to: localhost
+
+- name: Add DNS public API for designate service
+  os_keystone_endpoint:
+    cloud: openstack
+    service: designate
+    endpoint_interface: public
+    url: http://{{ osp_ctl_ip }}:9001
+    region: RegionOne
+    state: present
+  become: false
+  delegate_to: localhost
+
+- name: Popluate Designate configuration file
+  template:
+    src: designate.conf.j2
+    dest: /etc/designate/designate.conf
+    force: yes
+
+- name: Update Database
+  shell: designate-manage database sync
+
+- name: Start Designate API services
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+    - designate-central
+    - designate-api
+
+- name: Populate Designate pool(s)
+  template:
+    src: pools.j2
+    dest: /etc/designate/pools.yaml
+    force: yes
+
+- name: Update Designate pool
+  shell: designate-manage pool update
+
+- name: Start Designate mDNS services
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+    - designate-worker
+    - designate-producer
+    - designate-mdns
+
+
+### More configuration at openstack level , Neutron, nova , etc
+
+
+
+
